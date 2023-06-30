@@ -14,6 +14,7 @@
 #define NBIN 1000
 #define MAX_RINGSIZE 7
 
+/* this script reads files of coordinates of the lattice and counts the rings separating them by their size*/
 /* Initialization variables */
 const int mc_steps = 300000;
 const int output_steps = 100;
@@ -240,13 +241,13 @@ void find_hexagones(){
     int bonded_part[3];
     int find_ring = 1;
 
-    /* quadrati */
+    /* squares */
     ring_number[0]=0;
-    /* pentagoni */
+    /* pentagons */
     ring_number[1]=0;
-    /* esagoni */
+    /* hexagons */
     ring_number[2]=0;
-    /* ettagoni */
+    /* heptagons */
     ring_number[3]=0;
     
     for (int p = 0; p < n_particles; p++){
@@ -337,8 +338,6 @@ int main(int argc, char* argv[]){
     double densities[] = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
 
     char buffer[128];
-    //sprintf(buffer, "last_config/%.2lf_%.1lf.dat", temp, density);
-    //sprintf(buffer, "%.2lfcoords%.1lf/coords_step0290000.dat", temp, density);
 
     
     FILE* data_file = fopen("data.csv", "w");
@@ -373,16 +372,20 @@ int main(int argc, char* argv[]){
     for(int t = 0; t < 6; t++){
         for(int d = 0; d < 6; d++){
             sprintf(buffer, "last_config/%.2lf_%.1lf.dat", temperatures[t], densities[d]);
+
             read_data(buffer);
+            /* compute potential */
             energy = potential();
+            /* count rings */
             find_hexagones();
+            /* compute number of neighbours */
             compute_radial_distr();
 
             double sum = 0.0;
             for (int i = 0; i < 4; i++){ sum += ring_number[i]/(i+4.0);}
             printf("pot = %lf, rings %lf, squares %lf, pentagones %lf, hexagones %lf, heptagones %lf nn %lf \n", energy, sum, ring_number[0]/4.0, ring_number[1]/5.0, ring_number[2]/6.0, ring_number[3]/7.0, avg_nn);
-    
-    
+
+            /* print data in a file */
             fprintf(data_file, "%lf; %lf; %lf; %lf; %lf; %lf; %lf; %lf; %lf \n", temperatures[t], densities[d], energy, sum, ring_number[0]/4.0, ring_number[1]/5.0, ring_number[2]/6.0, ring_number[3]/7.0, avg_nn);
     
         }

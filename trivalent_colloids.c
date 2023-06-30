@@ -12,6 +12,7 @@
 #define NDIM 2
 #define N 500
 #define NBIN 1000
+#define MAX_RINGSIZE 7
 
 /* Initialization variables */
 const int mc_steps = 500000;
@@ -42,7 +43,7 @@ double energy;
 double avg_nn = 0.0;
 double r_cut  = 2.5;
 int bonds[N][N];
-int hexa = 0;
+int ring_number[4];
 
 /* Functions */
 
@@ -102,28 +103,6 @@ void read_data(void){
 }
 
 void initialize(){
-    // int rows = 32;    // Number of rows in the square grid
-    // int cols = 32;    // Number of columns in the square grid
-    // for (int i = 0; i < n_particles; i++) {
-    //         r[i][0] = (i % cols);
-    //         r[i][1] = (i / cols);
-    //         theta[i] = 0.0;
-    //         //dsfmt_genrand()*2.0/3.0*M_PI;
-    // }
-    // box[0] = 32.0;
-    // box[1] = 32.0;
-
-    // int rows = 23;    // Number of rows in the square grid
-    // int cols = 23;    // Number of columns in the square grid
-    // double spacing = 1.2; // Spacing between circles
-
-    // for (int i = 0; i < n_particles; i++) {
-    //     r[i][0] = 1+ (i % cols) * spacing;
-    //     r[i][1] = 1+ (i / cols) * spacing;
-    //     theta[i] = dsfmt_genrand()*2.0/3.0*M_PI;
-    // }
-    // box[0] = rows * spacing;
-    // box[1] = cols * spacing;
 
     int rows = 10;
     int cols = 10;
@@ -137,9 +116,6 @@ void initialize(){
     }
     box[0] = rows * spacing;
     box[1] = cols * spacing;
-    // r[1][0] = r[0][0]+1.1;
-    // theta[0] = 0.0;
-    // theta[1] = 0.0;
 
     for(int i = 0; i < n_particles; i++){
         for(int j = 0; j < n_particles; j++){
@@ -486,93 +462,70 @@ void write_radial_distr(FILE* file){
 }
 
 void find_hexagones(){
+    /* count the rings by size and store them in ring_number */
     int p_bonds = 0;
+    int k = 0;
     int candidate = 0, node_to_find = 0;
-    int hexagone[6];
+    int ring[MAX_RINGSIZE];
     int bonded_part[3];
-    int not_done_with_this_particle = 0;
-    int find_hexagone = 1;
+    int find_ring = 1;
 
-    /* initialize hexagone */
-    hexa = 0;
-    for (int i = 0; i < 6; i++){
-        hexagone[i] = -1;
-    }
+    /* squares */
+    ring_number[0]=0;
+    /* pentagons */
+    ring_number[1]=0;
+    /* hexagons */
+    ring_number[2]=0;
+    /* heptagons */
+    ring_number[3]=0;
     
     for (int p = 0; p < n_particles; p++){
-        /* find first three particles for hexagone */
-        p_bonds = 0;
+
+
+        /* find first three particles for ring */
+        p_bonds = 0; k = 0;
+        for (int z = 0; z<3; z++){bonded_part[z] = -1;}
         for(int n = 0; n < n_particles; n++){
             if (bonds[n][p] == 1 && p != n) {
                 bonded_part[p_bonds] = n;
                 p_bonds ++;
             }
         }
-        if (p_bonds >= 2){
-            hexagone[0] = p;
-            hexagone[1] = bonded_part[0];
-            hexagone[5] = bonded_part[1];
-            if(p_bonds == 3){ not_done_with_this_particle = 1;}
+        while (p_bonds >= 2 & k < p_bonds){
+            /* initialize ring  */
+            for (int i = 0; i < MAX_RINGSIZE; i++){
+                ring[i] = -1;
+            }
+            /* use p as reference particle to find ring */
+            ring[0] = p;
+            ring[1] = bonded_part[k];
+            ring[MAX_RINGSIZE-1] = bonded_part[(k+1) % n_patches];
             node_to_find = 2;
 
             /* create hexagone */
-            find_hexagone = 1;
-            while(find_hexagone && node_to_find < 5){
+            find_ring = 1;
+            while(find_ring && node_to_find < MAX_RINGSIZE){
                 candidate = 0;
 
                 /* find next node */
-                while(hexagone[node_to_find] == -1 && candidate < n_particles ){
-                    /* check if the candidate is valide */
-                    if(bonds[hexagone[node_to_find-1]][candidate] && candidate != hexagone[node_to_find-2] && distance(r[candidate], r[hexagone[(node_to_find+3) % 6]], box) <= 2*r_cut*1.05){
-                        hexagone[node_to_find] = candidate;
+                while(ring[node_to_find] == -1 && candidate < n_particles ){
+                    /* check if the candidate is valid */
+                    if(bonds[ring[node_to_find-1]][candidate] && candidate != ring[node_to_find-2] && distance(r[candidate], r[ring[(node_to_find+4) % 7]], box) <= 2*r_cut*1.15){
+                        ring[node_to_find] = candidate;
                     } else { candidate ++; }
                 }
-                /* if node wasn't find */
-                if(hexagone[node_to_find] == -1){
-                    find_hexagone = 0;
-                /* if node wasn find, go to the next */
-                } else { 
+                /* if node wasn't find after checking all the particles*/
+                if(ring[node_to_find] == -1){
+                    find_ring = 0;
+                /* if node was found, check if the ring is closed or find next node */
+                } else if (bonds[ring[node_to_find]][ring[MAX_RINGSIZE-1]]) {
+                    ring_number[node_to_find-2]++;
+                    find_ring = 0;
+                } else {
                     node_to_find ++;
                 }
             }
-            if( find_hexagone && node_to_find == 5 ){ 
-               if(bonds[hexagone[5], hexagone[4]]){
-                        hexa ++; 
-                    }
-            }
-
-            if(p_bonds == 3){
-                hexagone[5] = bonded_part[2];
-                hexagone[2] = hexagone[3] = hexagone[4] = -1;
-                node_to_find = 2;
-
-                /* create hexagone */
-                find_hexagone = 1;
-                while(find_hexagone && node_to_find < 5){
-                    candidate = 0;
-
-                    /* find next node */
-                    while(hexagone[node_to_find] == -1 && candidate < n_particles ){
-                        /* check if the candidate is valide */
-                        if(bonds[hexagone[node_to_find-1]][candidate] == 1 && candidate != hexagone[node_to_find-2] && distance(r[candidate], r[hexagone[(node_to_find+3) % 6]], box) <= 2*r_cut*1.05){
-                            hexagone[node_to_find] = candidate;
-                        } else { candidate ++; }
-                    }
-                    /* if node wasn't find */
-                    if(hexagone[node_to_find] == -1){
-                        find_hexagone = 0;
-                    /* if node wasn find, go to the next */
-                    } else { 
-                        node_to_find ++;
-                    }
-                }
-                if( find_hexagone && node_to_find == 5 ){ 
-                    if(bonds[hexagone[5], hexagone[4]]){
-                        hexa ++; 
-                    }
-                }
-            }
-            for (int i = 0; i < 6; i++){ hexagone[i] = -1; }
+            k++;
         }
     }
 }
@@ -660,9 +613,9 @@ int main(int argc, char* argv[]){
             //find_hexagones();
 
             write_radial_distr(hist_file);
-            fprintf(data_file, "%d; %lf; %lf; %d\n", step, energy, avg_nn, hexa);
+            fprintf(data_file, "%d; %lf; %lf; %d\n", step, energy, avg_nn);
 
-            printf("Step %d - Move acceptance: trans %.2lf \t rot %.2lf \t en: %.0lf \t avg nn: %.2lf \t hexa: %d\n", step, (double)accepted_trans / (n_particles * output_steps), (double)accepted_rot / (n_particles * output_steps), energy, avg_nn, hexa);
+            printf("Step %d - Move acceptance: trans %.2lf \t rot %.2lf \t en: %.0lf \t avg nn: %.2lf \t hexa: %d\n", step, (double)accepted_trans / (n_particles * output_steps), (double)accepted_rot / (n_particles * output_steps), energy, avg_nn);
             accepted_trans = 0;
             accepted_rot = 0;
             
